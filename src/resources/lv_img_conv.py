@@ -119,6 +119,7 @@ elif args.color_format == "CF_TRUE_COLOR_ALPHA" and args.binary_format == "ARGB8
             r_act = classify_pixel(pixel[0], 5)
             g_act = classify_pixel(pixel[1], 6)
             b_act = classify_pixel(pixel[2], 5)
+            a = pixel[3]
             if r_act > 0xF8:
                 r_act = 0xF8
             if g_act > 0xFC:
