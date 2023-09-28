@@ -2,6 +2,7 @@
 import argparse
 import pathlib
 import sys
+import decimal
 from PIL import Image
 
 parser = argparse.ArgumentParser()
@@ -35,6 +36,9 @@ parser.add_argument("--binary-format",
     choices=["ARGB8332", "ARGB8565", "ARGB8565_RBSWAP", "ARGB8888"])
 #  --swap-endian, -s    swap endian of image                            [boolean]
 #  --dither, -d         enable dither                                   [boolean]
+parser.add_argument("--test",
+    help="run internal tests and exit afterwards",
+    action="store_true")
 args = parser.parse_args()
 
 img_path = pathlib.Path(args.img)
@@ -55,64 +59,91 @@ if args.color_format not in ["CF_INDEXED_1_BIT", "CF_TRUE_COLOR_ALPHA"]:
     raise NotImplementedError(f"args.color_format '{args.color_format}' not implemented")
 if args.output_format != "bin":
     raise NotImplementedError(f"args.output_format '{args.output_format}' not implemented")
-if args.binary_format != "ARGB8565_RBSWAP":
+if args.binary_format not in ["ARGB8565_RBSWAP", "ARGB8888"]:
     raise NotImplementedError(f"args.binary_format '{args.binary_format}' not implemented")
 
 img = Image.open(img_path)
 #img.convert()
 
 def classify_pixel(value, bits):
+    def round_half_up(v):
+        """python3 implements "propper" "banker's rounding" by rounding to the nearest
+        even number. Javascript rounds to the nearest integer.
+        To have the same output as the original JavaScript implementation add a custom
+        rounding function, which does "school" rounding (to the nearest integer).
+
+        see: https://stackoverflow.com/questions/43851273/how-to-round-float-0-5-up-to-1-0-while-still-rounding-0-45-to-0-0-as-the-usual
+        """
+        return int(decimal.Decimal(v).quantize(decimal.Decimal('1'), rounding=decimal.ROUND_HALF_UP))
     tmp = 1 << (8 - bits)
-    val = round(value / tmp) * tmp
+    val = round_half_up(value / tmp) * tmp
     if val < 0:
         val = 0
     return val
+def test_classify_pixel():
+    # test difference between round() and round_half_up()
+    assert classify_pixel(18, 5) == 16
+    # school rounding 4.5 to 5, but banker's rounding 4.5 to 4
+    assert classify_pixel(18, 6) == 20
+
+if args.test:
+    print("running tests")
+    test_classify_pixel()
+    print("success!")
+    sys.exit(0)
+
 img_height = img.height
 img_width = img.width
 print(f"loaded image with width x heigth: {img_width} x {img_height}")
-match args.color_format:
-    case "CF_TRUE_COLOR_ALPHA":
-        buf = bytearray(img_height*img_width*3) # 3 bytes (21 bit) per pixel
-        for y in range(img_height):
-            for x in range(img_width):
-                i = (y*img_width + x)*3 # buffer-index
-                pixel = img.getpixel((x,y))
-                r_act = classify_pixel(pixel[0], 5)
-                g_act = classify_pixel(pixel[1], 6)
-                b_act = classify_pixel(pixel[2], 5)
-                a = pixel[3]
-                if r_act > 0xF8:
-                    r_act = 0xF8;
-                if g_act > 0xFC:
-                    g_act = 0xFC;
-                if b_act > 0xF8:
-                    b_act = 0xF8;
-                c16 = ((r_act) << 8) | ((g_act) << 3) | ((b_act) >> 3) # RGR565
-                buf[i + 0] = (c16 >> 8) & 0xFF
-                buf[i + 1] = c16 & 0xFF
-                buf[i + 2] = a
+if args.color_format == "CF_TRUE_COLOR_ALPHA" and args.binary_format == "ARGB8888":
+    buf = bytearray(img_height*img_width*4) # 4 bytes (32 bit) per pixel
+    for y in range(img_height):
+        for x in range(img_width):
+            i = (y*img_width + x)*4 # buffer-index
+            pixel = img.getpixel((x,y))
+            r = pixel[0]
+            g = pixel[1]
+            b = pixel[2]
+            a = pixel[3]
+            buf[i + 0] = r
+            buf[i + 1] = g
+            buf[i + 2] = b
+            buf[i + 3] = a
 
-    case "CF_INDEXED_1_BIT":
-        w = img_width >> 3
-        if img_width & 0x07:
-            w+=1
-        max_p = w * (img_height-1) + ((img_width-1) >> 3) + 8  # +8 for the palette
-        buf = bytearray(max_p+1)
+elif args.color_format == "CF_TRUE_COLOR_ALPHA" and args.binary_format == "ARGB8565_RBSWAP":
+    buf = bytearray(img_height*img_width*3) # 3 bytes (21 bit) per pixel
+    for y in range(img_height):
+        for x in range(img_width):
+            i = (y*img_width + x)*3 # buffer-index
+            pixel = img.getpixel((x,y))
+            r_act = classify_pixel(pixel[0], 5)
+            g_act = classify_pixel(pixel[1], 6)
+            b_act = classify_pixel(pixel[2], 5)
+            if r_act > 0xF8:
+                r_act = 0xF8
+            if g_act > 0xFC:
+                g_act = 0xFC
+            if b_act > 0xF8:
+                b_act = 0xF8
+            c16 = ((r_act) << 8) | ((g_act) << 3) | ((b_act) >> 3) # RGR565
+            buf[i + 0] = (c16 >> 8) & 0xFF
+            buf[i + 1] = c16 & 0xFF
+            buf[i + 2] = a
 
-        colors = set()
-        c_prev, a_prev = img.getpixel((0,0))
-        for y in range(img_height):
-            for x in range(img_width):
-                c, a = img.getpixel((x,y))
-                colors.add((c, a))
-                p = w * y + (x >> 3) + 8  # +8 for the palette
-                #if(!isset(this.d_out[p])) this.d_out[p] = 0  # Clear the bits first
-                buf[p] |= (c & 0x1) << (7 - (x & 0x7))
-    case _:
-        # raise just to be sure
-        raise NotImplementedError(f"args.color_format '{args.color_format}' not implemented")
+elif args.color_format == "CF_INDEXED_1_BIT": # ignore binary format, use color format as binary format
+    w = img_width >> 3
+    if img_width & 0x07:
+        w+=1
+    max_p = w * (img_height-1) + ((img_width-1) >> 3) + 8  # +8 for the palette
+    buf = bytearray(max_p+1)
 
-if args.color_format == "CF_INDEXED_1_BIT":
+    for y in range(img_height):
+        for x in range(img_width):
+            c, a = img.getpixel((x,y))
+            p = w * y + (x >> 3) + 8  # +8 for the palette
+            #if(!isset(this.d_out[p])) this.d_out[p] = 0  # Clear the bits first
+            buf[p] |= (c & 0x1) << (7 - (x & 0x7))
+    # write palette information
     palette_size = 2
     bits_per_value = 1
     # write 8 palette bytes
@@ -125,6 +156,9 @@ if args.color_format == "CF_INDEXED_1_BIT":
     buf[5] = 255
     buf[6] = 255
     buf[7] = 255
+else:
+    # raise just to be sure
+    raise NotImplementedError(f"args.color_format '{args.color_format}' with args.binary_format '{args.binary_format}' not implemented")
 
 # write header
 match args.color_format:
