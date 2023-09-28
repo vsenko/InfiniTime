@@ -111,7 +111,7 @@ if args.color_format == "CF_TRUE_COLOR_ALPHA" and args.binary_format == "ARGB888
             buf[i + 3] = a
 
 elif args.color_format == "CF_TRUE_COLOR_ALPHA" and args.binary_format == "ARGB8565_RBSWAP":
-    buf = bytearray(img_height*img_width*3) # 3 bytes (21 bit) per pixel
+    buf = bytearray(img_height*img_width*3) # 3 bytes (24 bit) per pixel
     for y in range(img_height):
         for x in range(img_width):
             i = (y*img_width + x)*3 # buffer-index
