@@ -8,14 +8,12 @@
 #include "components/settings/Settings.h"
 #include "displayapp/InfiniTimeTheme.h"
 
-LV_IMG_DECLARE(bg_clock);
-
 using namespace Pinetime::Applications::Screens;
 
 namespace {
-  constexpr int16_t HourLength = 70;
-  constexpr int16_t MinuteLength = 90;
-  constexpr int16_t SecondLength = 110;
+  constexpr int16_t HourLength = 55;
+  constexpr int16_t MinuteLength = 75;
+  constexpr int16_t SecondLength = 95;
 
   // sin(90) = 1 so the value of _lv_trigo_sin(90) is the scaling factor
   const auto LV_TRIG_SCALE = _lv_trigo_sin(90);
@@ -60,9 +58,47 @@ WatchFaceAnalog::WatchFaceAnalog(Controllers::DateTime& dateTimeController,
   sMinute = 99;
   sSecond = 99;
 
-  lv_obj_t* bg_clock_img = lv_img_create(lv_scr_act(), nullptr);
-  lv_img_set_src(bg_clock_img, &bg_clock);
-  lv_obj_align(bg_clock_img, nullptr, LV_ALIGN_CENTER, 0, 0);
+  minor_scales = lv_linemeter_create(lv_scr_act(), nullptr);
+  lv_linemeter_set_scale(minor_scales, 360, 61);
+  lv_obj_set_size(minor_scales, 210, 210);
+  lv_obj_align(minor_scales, nullptr, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_set_style_local_bg_opa(minor_scales, LV_LINEMETER_PART_MAIN, LV_STATE_DEFAULT, LV_OPA_TRANSP);
+  lv_obj_set_style_local_scale_width(minor_scales, LV_LINEMETER_PART_MAIN, LV_STATE_DEFAULT, 4);
+  lv_obj_set_style_local_scale_end_line_width(minor_scales, LV_LINEMETER_PART_MAIN, LV_STATE_DEFAULT, 2);
+  lv_obj_set_style_local_scale_end_color(minor_scales, LV_LINEMETER_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_GRAY);
+
+  major_scales = lv_linemeter_create(lv_scr_act(), nullptr);
+  lv_linemeter_set_scale(major_scales, 360, 13);
+  lv_obj_set_size(major_scales, 210, 210);
+  lv_obj_align(major_scales, nullptr, LV_ALIGN_CENTER, 0, 0);
+  lv_obj_set_style_local_bg_opa(major_scales, LV_LINEMETER_PART_MAIN, LV_STATE_DEFAULT, LV_OPA_TRANSP);
+  lv_obj_set_style_local_scale_width(major_scales, LV_LINEMETER_PART_MAIN, LV_STATE_DEFAULT, 6);
+  lv_obj_set_style_local_scale_end_line_width(major_scales, LV_LINEMETER_PART_MAIN, LV_STATE_DEFAULT, 4);
+  lv_obj_set_style_local_scale_end_color(major_scales, LV_LINEMETER_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE);
+
+  twelve = lv_label_create(lv_scr_act(), nullptr);
+  lv_label_set_align(twelve, LV_LABEL_ALIGN_CENTER);
+  lv_label_set_text_static(twelve, "12");
+  lv_obj_set_pos(twelve, 108, 0);
+  lv_obj_set_style_local_text_color(twelve, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_AQUA);
+
+  three = lv_label_create(lv_scr_act(), nullptr);
+  lv_label_set_align(three, LV_LABEL_ALIGN_LEFT);
+  lv_label_set_text_static(three, "3");
+  lv_obj_set_pos(three, 224, 108);
+  lv_obj_set_style_local_text_color(three, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_AQUA);
+
+  six = lv_label_create(lv_scr_act(), nullptr);
+  lv_label_set_align(six, LV_LABEL_ALIGN_CENTER);
+  lv_label_set_text_static(six, "6");
+  lv_obj_set_pos(six, 114, 216);
+  lv_obj_set_style_local_text_color(six, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_AQUA);
+
+  nine = lv_label_create(lv_scr_act(), nullptr);
+  lv_label_set_align(nine, LV_LABEL_ALIGN_RIGHT);
+  lv_label_set_text_static(nine, "9");
+  lv_obj_set_pos(nine, 4, 108);
+  lv_obj_set_style_local_text_color(nine, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_AQUA);
 
   batteryIcon.Create(lv_scr_act());
   lv_obj_align(batteryIcon.GetObject(), nullptr, LV_ALIGN_IN_TOP_RIGHT, 0, 0);
@@ -84,9 +120,9 @@ WatchFaceAnalog::WatchFaceAnalog(Controllers::DateTime& dateTimeController,
 
   label_date_day = lv_label_create(lv_scr_act(), nullptr);
   lv_obj_set_style_local_text_color(label_date_day, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, Colors::orange);
-  lv_label_set_text_fmt(label_date_day, "%s\n%02i", dateTimeController.DayOfWeekShortToString(), dateTimeController.Day());
-  lv_label_set_align(label_date_day, LV_LABEL_ALIGN_CENTER);
-  lv_obj_align(label_date_day, nullptr, LV_ALIGN_CENTER, 50, 0);
+  lv_label_set_text_fmt(label_date_day, "%02i %s\n%s", dateTimeController.Day(), dateTimeController.MonthShortToString(), dateTimeController.DayOfWeekShortToString());
+  lv_label_set_align(label_date_day, LV_LABEL_ALIGN_LEFT);
+  lv_obj_set_pos(label_date_day, 0, 0);
 
   minute_body = lv_line_create(lv_scr_act(), nullptr);
   minute_body_trace = lv_line_create(lv_scr_act(), nullptr);
@@ -148,11 +184,11 @@ void WatchFaceAnalog::UpdateClock() {
 
   if (sMinute != minute) {
     auto const angle = minute * 6;
-    minute_point[0] = CoordinateRelocate(30, angle);
+    minute_point[0] = CoordinateRelocate(20, angle);
     minute_point[1] = CoordinateRelocate(MinuteLength, angle);
 
     minute_point_trace[0] = CoordinateRelocate(5, angle);
-    minute_point_trace[1] = CoordinateRelocate(31, angle);
+    minute_point_trace[1] = CoordinateRelocate(21, angle);
 
     lv_line_set_points(minute_body, minute_point, 2);
     lv_line_set_points(minute_body_trace, minute_point_trace, 2);
@@ -163,11 +199,11 @@ void WatchFaceAnalog::UpdateClock() {
     sMinute = minute;
     auto const angle = (hour * 30 + minute / 2);
 
-    hour_point[0] = CoordinateRelocate(30, angle);
+    hour_point[0] = CoordinateRelocate(20, angle);
     hour_point[1] = CoordinateRelocate(HourLength, angle);
 
     hour_point_trace[0] = CoordinateRelocate(5, angle);
-    hour_point_trace[1] = CoordinateRelocate(31, angle);
+    hour_point_trace[1] = CoordinateRelocate(21, angle);
 
     lv_line_set_points(hour_body, hour_point, 2);
     lv_line_set_points(hour_body_trace, hour_point_trace, 2);
@@ -177,7 +213,7 @@ void WatchFaceAnalog::UpdateClock() {
     sSecond = second;
     auto const angle = second * 6;
 
-    second_point[0] = CoordinateRelocate(-20, angle);
+    second_point[0] = CoordinateRelocate(-10, angle);
     second_point[1] = CoordinateRelocate(SecondLength, angle);
     lv_line_set_points(second_body, second_point, 2);
   }
@@ -228,7 +264,7 @@ void WatchFaceAnalog::Refresh() {
 
     currentDate = std::chrono::time_point_cast<days>(currentDateTime.Get());
     if (currentDate.IsUpdated()) {
-      lv_label_set_text_fmt(label_date_day, "%s\n%02i", dateTimeController.DayOfWeekShortToString(), dateTimeController.Day());
+      lv_label_set_text_fmt(label_date_day, "%02i %s\n%s", dateTimeController.Day(), dateTimeController.MonthShortToString(), dateTimeController.DayOfWeekShortToString());
     }
   }
 }
