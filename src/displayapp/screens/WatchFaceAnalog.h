@@ -48,16 +48,13 @@ namespace Pinetime {
 
         lv_obj_t* minor_scales;
         lv_obj_t* major_scales;
-        lv_obj_t* twelve;
-        lv_obj_t* three;
-        lv_obj_t* six;
-        lv_obj_t* nine;
+        lv_obj_t* minor_label[12];
+        lv_obj_t* major_label[12];
 
         lv_obj_t* hour_body;
         lv_obj_t* hour_body_trace;
         lv_obj_t* minute_body;
         lv_obj_t* minute_body_trace;
-        lv_obj_t* second_body;
 
         lv_point_t hour_point[2];
         lv_point_t hour_point_trace[2];
@@ -72,6 +69,8 @@ namespace Pinetime {
         lv_style_t second_line_style;
 
         lv_obj_t* label_date_day;
+        lv_obj_t* label_time;
+
         lv_obj_t* plugIcon;
         lv_obj_t* notificationIcon;
         lv_obj_t* bleIcon;
